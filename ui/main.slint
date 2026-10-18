@@ -1,0 +1,352 @@
+import { Button, CheckBox, HorizontalBox, LineEdit, ListView, TextEdit, VerticalBox } from "std-widgets.slint";
+
+struct Note {
+    name: string,
+    deadline: string,
+    filename: string,
+    done: bool,
+    overdue: bool,
+}
+
+export component MainWindow inherits Window {
+    in property <[Note]> notes;
+    in property <string> selected: "";
+    in-out property <bool> hide-done: false;
+    in property <bool> notes-dir-set: false;
+    in property <string> initial-folder: "";
+    in-out property <string> onboarding-path: "";
+
+    in-out property <string> detail-name: "";
+    in-out property <string> detail-deadline: "";
+    in-out property <string> detail-description: "";
+    in-out property <bool> detail-done: false;
+    in property <bool> detail-editable: false;
+
+    in property <bool> discard-confirm-visible: false;
+    in-out property <string> status-message: "";
+
+    property <bool> new-note-visible: false;
+    property <string> new-note-name: "";
+    property <bool> delete-confirm-visible: false;
+
+    callback use-folder(path: string);
+    callback new-note(name: string);
+    callback delete-selected();
+    callback refresh();
+    callback toggle-hide-done();
+    callback change-folder();
+    callback select(filename: string);
+    callback toggle-done(filename: string);
+    callback save-detail();
+    callback discard-confirmed();
+    callback discard-cancelled();
+
+    width: 950px;
+    height: 600px;
+
+    if !root.notes-dir-set: VerticalLayout {
+        alignment: LayoutAlignment.center;
+        cross-axis-alignment: CrossAxisAlignment.center;
+        VerticalBox {
+            width: 480px;
+            spacing: 12px;
+            padding: 24px;
+            Text {
+                text: "Path to your notes folder (e.g. a GTD/ subfolder of your Obsidian vault)";
+                wrap: TextWrap.word-wrap;
+                horizontal-alignment: TextHorizontalAlignment.center;
+            }
+            LineEdit {
+                width: 432px;
+                text <=> root.onboarding-path;
+            }
+            HorizontalBox {
+                alignment: LayoutAlignment.center;
+                Button {
+                    text: "Use folder";
+                    clicked => {
+                        root.use-folder(root.onboarding-path);
+                    }
+                }
+            }
+        }
+    }
+
+    if root.notes-dir-set: VerticalLayout {
+        spacing: 0;
+        HorizontalBox {
+            padding: 8px;
+            spacing: 8px;
+            Button {
+                text: "New";
+                clicked => {
+                    root.new-note-name = "";
+                    root.new-note-visible = true;
+                }
+            }
+            Button {
+                text: "Delete";
+                enabled: root.selected != "";
+                clicked => {
+                    root.delete-confirm-visible = true;
+                }
+            }
+            Button {
+                text: "Refresh";
+                clicked => {
+                    root.refresh();
+                }
+            }
+            CheckBox {
+                text: "Hide done";
+                checked <=> root.hide-done;
+                toggled => {
+                    root.toggle-hide-done();
+                }
+            }
+            Button {
+                text: "Change folder…";
+                clicked => {
+                    root.change-folder();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: "\{root.notes.length} notes";
+            }
+        }
+
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            spacing: 0;
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 0;
+                if root.notes.length == 0: Text {
+                    text: "No notes yet";
+                    color: #888888;
+                }
+                ListView {
+                    vertical-stretch: 1;
+                    for item in root.notes: Rectangle {
+                        height: 32px;
+                        horizontal-stretch: 1;
+                        background: item.filename == root.selected ? #dcdcf0 : #ffffff;
+                        TouchArea {
+                            clicked => {
+                                root.select(item.filename);
+                            }
+                        }
+                        HorizontalBox {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            spacing: 8px;
+                            CheckBox {
+                                checked: item.done;
+                                toggled => {
+                                    root.toggle-done(item.filename);
+                                }
+                            }
+                            Text {
+                                text: item.done ? "✓ \{item.name}" : "\{item.name}";
+                                horizontal-stretch: 1;
+                                overflow: elide;
+                                color: item.done ? #999999 : #202020;
+                            }
+                            Text {
+                                text: item.deadline;
+                                color: item.overdue ? #cc2222 : #888888;
+                            }
+                        }
+                    }
+                }
+            }
+
+            VerticalBox {
+                width: 340px;
+                padding: 8px;
+                if root.detail-editable: VerticalBox {
+                    vertical-stretch: 1;
+                    spacing: 8px;
+                    Text {
+                        text: "Note";
+                    }
+                    LineEdit {
+                        text <=> root.detail-name;
+                    }
+                    HorizontalBox {
+                        spacing: 8px;
+                        Text {
+                            text: "Deadline";
+                        }
+                        LineEdit {
+                            horizontal-stretch: 1;
+                            placeholder-text: "YYYY-MM-DD";
+                            text <=> root.detail-deadline;
+                        }
+                    }
+                    Text {
+                        text: "Description";
+                    }
+                    TextEdit {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        text <=> root.detail-description;
+                    }
+                    CheckBox {
+                        text: "Done";
+                        checked <=> root.detail-done;
+                    }
+                    Button {
+                        text: "Save";
+                        clicked => {
+                            root.save-detail();
+                        }
+                    }
+                }
+                if !root.detail-editable: Text {
+                    text: "Select or create a note";
+                    color: #888888;
+                }
+            }
+        }
+
+        HorizontalBox {
+            padding-left: 8px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            Text {
+                text: root.status-message;
+                color: #555555;
+            }
+        }
+    }
+
+    if root.new-note-visible: Rectangle {
+        background: rgba(0, 0, 0, 0.4);
+        VerticalLayout {
+            alignment: LayoutAlignment.center;
+            cross-axis-alignment: CrossAxisAlignment.center;
+            Rectangle {
+                background: #ffffff;
+                VerticalBox {
+                    width: 340px;
+                    padding: 16px;
+                    spacing: 10px;
+                    Text {
+                        text: "New note";
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "Name";
+                    }
+                    LineEdit {
+                        text <=> root.new-note-name;
+                    }
+                    HorizontalBox {
+                        alignment: LayoutAlignment.end;
+                        spacing: 8px;
+                        Button {
+                            text: "Cancel";
+                            clicked => {
+                                root.new-note-visible = false;
+                            }
+                        }
+                        Button {
+                            text: "Create";
+                            clicked => {
+                                let name = root.new-note-name;
+                                root.new-note-visible = false;
+                                root.new-note-name = "";
+                                root.new-note(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.delete-confirm-visible: Rectangle {
+        background: rgba(0, 0, 0, 0.4);
+        VerticalLayout {
+            alignment: LayoutAlignment.center;
+            cross-axis-alignment: CrossAxisAlignment.center;
+            Rectangle {
+                background: #ffffff;
+                VerticalBox {
+                    width: 340px;
+                    padding: 16px;
+                    spacing: 10px;
+                    Text {
+                        text: "Delete \{root.selected}?";
+                    }
+                    HorizontalBox {
+                        alignment: LayoutAlignment.end;
+                        spacing: 8px;
+                        Button {
+                            text: "Cancel";
+                            clicked => {
+                                root.delete-confirm-visible = false;
+                            }
+                        }
+                        Button {
+                            text: "Delete";
+                            clicked => {
+                                root.delete-confirm-visible = false;
+                                root.delete-selected();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.discard-confirm-visible: Rectangle {
+        background: rgba(0, 0, 0, 0.4);
+        VerticalLayout {
+            alignment: LayoutAlignment.center;
+            cross-axis-alignment: CrossAxisAlignment.center;
+            Rectangle {
+                background: #ffffff;
+                VerticalBox {
+                    width: 340px;
+                    padding: 16px;
+                    spacing: 10px;
+                    Text {
+                        text: "Unsaved changes will be discarded.";
+                        wrap: TextWrap.word-wrap;
+                    }
+                    HorizontalBox {
+                        alignment: LayoutAlignment.end;
+                        spacing: 8px;
+                        Button {
+                            text: "Keep editing";
+                            clicked => {
+                                root.discard-cancelled();
+                            }
+                        }
+                        Button {
+                            text: "Discard";
+                            clicked => {
+                                root.discard-confirmed();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Timer {
+        interval: 4s;
+        running: root.status-message != "";
+        triggered => {
+            root.status-message = "";
+        }
+    }
+}
